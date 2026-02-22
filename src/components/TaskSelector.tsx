@@ -20,7 +20,7 @@ const SPIN_CYCLES = 5;
 const EXTRA_CYCLES = 1;
 
 // Credit thresholds
-const TASKS_PER_CREDIT = 5;       // every 5 completions → +1 credit
+const TASKS_PER_CREDIT = 2;       // every 2 completions → +1 credit
 const STREAK_BONUS_THRESHOLD = 10; // 10 in a row without skipping → +1 bonus credit
 
 function loadFromStorage<T>(key: string, fallback: T): T {
