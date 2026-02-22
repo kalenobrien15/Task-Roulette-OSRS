@@ -559,10 +559,10 @@ export default function TaskSelector() {
       {/* Spin Button */}
       <button
         onClick={spin}
-        disabled={isSpinning || tasks.length < 2}
+        disabled={isSpinning || tasks.length < 2 || winner !== null}
         className="mb-10 px-12 py-4 bg-yellow-500 hover:bg-yellow-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-neutral-950 font-black text-xl uppercase tracking-widest rounded-full shadow-[0_0_30px_rgba(250,204,21,0.4)] hover:shadow-[0_0_50px_rgba(250,204,21,0.7)] transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:shadow-none"
       >
-        {isSpinning ? "Spinning..." : "🎰 Spin!"}
+        {isSpinning ? "Spinning..." : winner ? "Complete or Skip!" : "🎰 Spin!"}
       </button>
 
       {/* Task List */}
