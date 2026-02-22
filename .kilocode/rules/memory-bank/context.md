@@ -91,3 +91,4 @@ export async function GET() {
 | 2026-02-22 | Redesigned display to stacked reel: 3 chatbox.png slots (prev/center/next), no chathead, no continue prompt; center slot full opacity, prev/next at 35% opacity |
 | 2026-02-22 | Added true slot machine scrolling animation: chatboxes physically scroll up/down with CSS translateY transition; 200-slot reel column, viewport clips to 3 slots, fade masks at top/bottom |
 | 2026-02-22 | Redesigned spin: looped fixed reel (SPIN_CYCLES * tasks.length slots), winner pre-picked, single CSS cubic-bezier transition lands exactly on selected task; reelKey resets reel between spins |
+| 2026-02-22 | Added white glow highlight on center selection slot (inset box-shadow + outer glow overlay); added Web Audio API metronome tick sound that fires each time a new slot scrolls into center position during spin |

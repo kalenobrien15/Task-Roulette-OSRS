@@ -30,6 +30,26 @@ function loadTasksFromStorage(): string[] {
   return [];
 }
 
+/** Play a short metronome-style tick using the Web Audio API */
+function playTick(audioCtx: AudioContext) {
+  const oscillator = audioCtx.createOscillator();
+  const gainNode = audioCtx.createGain();
+
+  oscillator.connect(gainNode);
+  gainNode.connect(audioCtx.destination);
+
+  // Short, sharp click: high-ish frequency, very brief
+  oscillator.type = "sine";
+  oscillator.frequency.setValueAtTime(1200, audioCtx.currentTime);
+  oscillator.frequency.exponentialRampToValueAtTime(400, audioCtx.currentTime + 0.04);
+
+  gainNode.gain.setValueAtTime(0.18, audioCtx.currentTime);
+  gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 0.06);
+
+  oscillator.start(audioCtx.currentTime);
+  oscillator.stop(audioCtx.currentTime + 0.06);
+}
+
 export default function TaskSelector() {
   const [tasks, setTasks] = useState<string[]>(loadTasksFromStorage);
   const [newTask, setNewTask] = useState("");
@@ -52,10 +72,70 @@ export default function TaskSelector() {
   // The finalIndex into tasks[] for the current spin
   const finalIndexRef = useRef(0);
 
+  // Ref to the scrolling reel DOM element (for reading current transform)
+  const reelRef = useRef<HTMLDivElement>(null);
+
+  // Web Audio context — created lazily on first user interaction
+  const audioCtxRef = useRef<AudioContext | null>(null);
+
+  // Track which slot was last centered (for tick detection)
+  const lastCenteredSlotRef = useRef<number>(-1);
+  // RAF handle for the tick loop
+  const tickRafRef = useRef<number>(0);
+  // Whether the tick loop should keep running
+  const isSpinningRef = useRef(false);
+
   // Save tasks to localStorage whenever they change
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   }, [tasks]);
+
+  /** Ensure AudioContext is created (must be after a user gesture) */
+  const ensureAudioCtx = useCallback(() => {
+    if (!audioCtxRef.current) {
+      audioCtxRef.current = new AudioContext();
+    }
+    // Resume if suspended (browser autoplay policy)
+    if (audioCtxRef.current.state === "suspended") {
+      audioCtxRef.current.resume();
+    }
+    return audioCtxRef.current;
+  }, []);
+
+  /**
+   * RAF loop that runs during a spin.
+   * Reads the reel's current translateY via getComputedStyle, calculates
+   * which slot is centered, and fires a tick whenever it changes.
+   */
+  const startTickLoop = useCallback(() => {
+    const loop = () => {
+      if (!isSpinningRef.current) return;
+
+      const el = reelRef.current;
+      if (el) {
+        const style = window.getComputedStyle(el);
+        const matrix = new DOMMatrix(style.transform);
+        const currentY = matrix.m42; // translateY in px
+
+        // Which slot index is currently centered in the viewport?
+        // Center slot top = SLOT_STEP (second slot in 3-slot viewport)
+        // Slot i top = currentY + i * SLOT_STEP
+        // We want: currentY + i * SLOT_STEP ≈ SLOT_STEP
+        // => i ≈ (SLOT_STEP - currentY) / SLOT_STEP
+        const centeredSlot = Math.round((SLOT_STEP - currentY) / SLOT_STEP);
+
+        if (centeredSlot !== lastCenteredSlotRef.current && centeredSlot >= 0) {
+          lastCenteredSlotRef.current = centeredSlot;
+          const ctx = audioCtxRef.current;
+          if (ctx) playTick(ctx);
+        }
+      }
+
+      tickRafRef.current = requestAnimationFrame(loop);
+    };
+
+    tickRafRef.current = requestAnimationFrame(loop);
+  }, []);
 
   const addTask = () => {
     const trimmed = newTask.trim();
@@ -86,6 +166,10 @@ export default function TaskSelector() {
     setError("");
     setWinner(null);
     setIsSpinning(true);
+    isSpinningRef.current = true;
+
+    // Ensure audio context is ready (must be called from user gesture)
+    ensureAudioCtx();
 
     // Pick the winner now
     const finalIndex = Math.floor(Math.random() * tasks.length);
@@ -105,6 +189,7 @@ export default function TaskSelector() {
 
     // Step 1: Reset reel to position 0 instantly (no transition), then on next frame start the spin
     // We increment reelKey to force a fresh reel render starting at translateY = 0
+    lastCenteredSlotRef.current = -1;
     setReelKey((k) => k + 1);
     setTranslateY(0);
     setTransition("none");
@@ -120,21 +205,28 @@ export default function TaskSelector() {
         // This easing accelerates quickly then decelerates dramatically at the end
         setTransition(`transform ${duration}ms cubic-bezier(0.12, 0.8, 0.2, 1.0)`);
         setTranslateY(targetTranslateY);
+
+        // Start the tick detection loop
+        startTickLoop();
       });
     });
-  }, [tasks]);
+  }, [tasks, ensureAudioCtx, startTickLoop]);
 
   // Handle transition end — announce winner
   const handleTransitionEnd = useCallback(() => {
-    if (!isSpinning) return;
+    if (!isSpinningRef.current) return;
+    isSpinningRef.current = false;
+    // Stop the tick loop
+    cancelAnimationFrame(tickRafRef.current);
     setWinner(tasks[finalIndexRef.current]);
     setIsSpinning(false);
-  }, [isSpinning, tasks]);
+  }, [tasks]);
 
   // Cleanup on unmount
   useEffect(() => {
     return () => {
-      // nothing to clean up with CSS transitions
+      isSpinningRef.current = false;
+      cancelAnimationFrame(tickRafRef.current);
     };
   }, []);
 
@@ -184,9 +276,21 @@ export default function TaskSelector() {
           }}
         />
 
+        {/* Center slot white glow highlight — sits above the reel, below the fade masks */}
+        <div
+          className="absolute inset-x-0 z-[5] pointer-events-none"
+          style={{
+            top: SLOT_STEP,
+            height: SLOT_HEIGHT,
+            boxShadow: "inset 0 0 0 3px rgba(255,255,255,0.85), 0 0 24px 6px rgba(255,255,255,0.35)",
+            borderRadius: 4,
+          }}
+        />
+
         {/* Scrolling reel */}
         <div
           key={reelKey}
+          ref={reelRef}
           onTransitionEnd={handleTransitionEnd}
           style={{
             position: "absolute",
