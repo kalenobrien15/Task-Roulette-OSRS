@@ -94,3 +94,4 @@ export async function GET() {
 | 2026-02-22 | Added white glow highlight on center selection slot (inset box-shadow + outer glow overlay); added Web Audio API metronome tick sound that fires each time a new slot scrolls into center position during spin |
 | 2026-02-22 | Added task completion system: green checkmark button after roll, completed tasks list (localStorage), Completed Tasks modal; skip credit system: 1 credit per 5 completions, +1 bonus at 10-streak, skip button costs 1 credit and re-spins; credits HUD with glowing dots, streak counter, progress bar |
 | 2026-02-22 | Spin now costs 1 credit per use; users start with 3 initial credits; Spin button disabled (shows "No Credits!") when credits = 0 |
+| 2026-02-22 | Reduced TASKS_PER_CREDIT from 5 to 2 so users can earn credits faster after completing tasks and spin again sooner |
