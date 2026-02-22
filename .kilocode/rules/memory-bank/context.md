@@ -96,3 +96,4 @@ export async function GET() {
 | 2026-02-22 | Spin now costs 1 credit per use; users start with 3 initial credits; Spin button disabled (shows "No Credits!") when credits = 0 |
 | 2026-02-22 | Reduced TASKS_PER_CREDIT from 5 to 2 so users can earn credits faster after completing tasks and spin again sooner |
 | 2026-02-22 | Fixed credit system: spins are now FREE, credits are only used for skipping (rerolling) a task |
+| 2026-02-22 | Added active task persistence: current task is saved to localStorage and restored on page refresh, preventing users from spinning away from an active task |
