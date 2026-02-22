@@ -7,6 +7,7 @@ const STORAGE_KEY = "task-selector-entries";
 const COMPLETED_STORAGE_KEY = "task-selector-completed";
 const CREDITS_STORAGE_KEY = "task-selector-credits";
 const STREAK_STORAGE_KEY = "task-selector-streak";
+const ACTIVE_TASK_KEY = "task-selector-active";
 
 // Slot dimensions
 const SLOT_HEIGHT = 142;
@@ -77,7 +78,13 @@ export default function TaskSelector() {
   const [showManage, setShowManage] = useState(false);
   const [showCompleted, setShowCompleted] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [winner, setWinner] = useState<string | null>(null);
+  // Load active task from localStorage on init
+  const [winner, setWinner] = useState<string | null>(() => {
+    const activeTask = loadFromStorage<string | null>(ACTIVE_TASK_KEY, null);
+    // Only restore if the task still exists in the tasks list
+    const currentTasks = loadFromStorage<string[]>(STORAGE_KEY, []);
+    return activeTask && currentTasks.includes(activeTask) ? activeTask : null;
+  });
   const [error, setError] = useState("");
 
   // translateY for the reel column (in px, negative = scrolled up)
@@ -126,6 +133,15 @@ export default function TaskSelector() {
   useEffect(() => {
     localStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(streak));
   }, [streak]);
+
+  // Persist active task
+  useEffect(() => {
+    if (winner) {
+      localStorage.setItem(ACTIVE_TASK_KEY, JSON.stringify(winner));
+    } else {
+      localStorage.removeItem(ACTIVE_TASK_KEY);
+    }
+  }, [winner]);
 
   /** Ensure AudioContext is created (must be after a user gesture) */
   const ensureAudioCtx = useCallback(() => {
