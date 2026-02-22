@@ -95,3 +95,4 @@ export async function GET() {
 | 2026-02-22 | Added task completion system: green checkmark button after roll, completed tasks list (localStorage), Completed Tasks modal; skip credit system: 1 credit per 5 completions, +1 bonus at 10-streak, skip button costs 1 credit and re-spins; credits HUD with glowing dots, streak counter, progress bar |
 | 2026-02-22 | Spin now costs 1 credit per use; users start with 3 initial credits; Spin button disabled (shows "No Credits!") when credits = 0 |
 | 2026-02-22 | Reduced TASKS_PER_CREDIT from 5 to 2 so users can earn credits faster after completing tasks and spin again sooner |
+| 2026-02-22 | Fixed credit system: spins are now FREE, credits are only used for skipping (rerolling) a task |
