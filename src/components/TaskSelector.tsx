@@ -66,7 +66,7 @@ export default function TaskSelector() {
   );
   // skipCredits: number of available skip credits
   const [skipCredits, setSkipCredits] = useState<number>(() =>
-    loadFromStorage<number>(CREDITS_STORAGE_KEY, 0)
+    loadFromStorage<number>(CREDITS_STORAGE_KEY, 3)
   );
   // streak: consecutive completions without skipping
   const [streak, setStreak] = useState<number>(() =>
@@ -242,6 +242,12 @@ export default function TaskSelector() {
       setError("Add at least 2 tasks to spin!");
       return;
     }
+    if (skipCredits <= 0) {
+      setError("No credits left! Complete tasks to earn more.");
+      return;
+    }
+    // Spend 1 credit per spin
+    setSkipCredits((c) => c - 1);
     setError("");
     setWinner(null);
     setIsSpinning(true);
@@ -289,7 +295,7 @@ export default function TaskSelector() {
         startTickLoop();
       });
     });
-  }, [tasks, ensureAudioCtx, startTickLoop]);
+  }, [tasks, skipCredits, ensureAudioCtx, startTickLoop]);
 
   // Handle transition end — announce winner
   const handleTransitionEnd = useCallback(() => {
@@ -311,9 +317,8 @@ export default function TaskSelector() {
 
   const handleSkip = useCallback(() => {
     if (skipCredits <= 0) return;
-    setSkipCredits((c) => c - 1);
     setStreak(0);
-    // spin() already clears winner and resets the reel internally
+    // spin() deducts 1 credit and resets the reel internally
     spin();
   }, [skipCredits, spin]);
 
@@ -541,10 +546,10 @@ export default function TaskSelector() {
       {/* Spin Button */}
       <button
         onClick={spin}
-        disabled={isSpinning || tasks.length < 2}
+        disabled={isSpinning || tasks.length < 2 || skipCredits <= 0}
         className="mb-10 px-12 py-4 bg-yellow-500 hover:bg-yellow-400 disabled:bg-neutral-700 disabled:text-neutral-500 text-neutral-950 font-black text-xl uppercase tracking-widest rounded-full shadow-[0_0_30px_rgba(250,204,21,0.4)] hover:shadow-[0_0_50px_rgba(250,204,21,0.7)] transition-all duration-200 active:scale-95 disabled:cursor-not-allowed disabled:shadow-none"
       >
-        {isSpinning ? "Spinning..." : "🎰 Spin!"}
+        {isSpinning ? "Spinning..." : skipCredits <= 0 ? "No Credits!" : "🎰 Spin!"}
       </button>
 
       {/* Task List */}
