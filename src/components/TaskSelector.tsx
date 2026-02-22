@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import Image from "next/image";
 
 const STORAGE_KEY = "task-selector-entries";
 
@@ -23,7 +24,8 @@ export default function TaskSelector() {
   const [newTask, setNewTask] = useState("");
   const [showManage, setShowManage] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [displayedTask, setDisplayedTask] = useState<string | null>(null);
+  // currentIndex tracks which task is "centered" in the reel
+  const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [winner, setWinner] = useState<string | null>(null);
   const [error, setError] = useState("");
   const spinIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -66,11 +68,11 @@ export default function TaskSelector() {
     let speed = 60; // ms between changes
     let elapsed = 0;
     const totalDuration = 3500; // ms total spin time
-    let currentIndex = 0;
+    let idx = 0;
 
     const tick = () => {
-      currentIndex = Math.floor(Math.random() * tasks.length);
-      setDisplayedTask(tasks[currentIndex]);
+      idx = (idx + 1) % tasks.length;
+      setCurrentIndex(idx);
       elapsed += speed;
 
       // Gradually slow down
@@ -85,9 +87,8 @@ export default function TaskSelector() {
       } else {
         // Land on final result
         const finalIndex = Math.floor(Math.random() * tasks.length);
-        const finalTask = tasks[finalIndex];
-        setDisplayedTask(finalTask);
-        setWinner(finalTask);
+        setCurrentIndex(finalIndex);
+        setWinner(tasks[finalIndex]);
         setIsSpinning(false);
       }
     };
@@ -103,6 +104,22 @@ export default function TaskSelector() {
     };
   }, []);
 
+  // Compute the 5 visible slots: prev2, prev1, center, next1, next2
+  const getSlotTasks = () => {
+    if (tasks.length === 0) return [];
+    const n = tasks.length;
+    return [
+      tasks[((currentIndex - 2) % n + n) % n],
+      tasks[((currentIndex - 1) % n + n) % n],
+      tasks[currentIndex % n],
+      tasks[(currentIndex + 1) % n],
+      tasks[(currentIndex + 2) % n],
+    ];
+  };
+
+  const slotTasks = getSlotTasks();
+  const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
+
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col items-center py-10 px-4">
       {/* Title */}
@@ -115,52 +132,121 @@ export default function TaskSelector() {
 
       {/* Slot Machine Display */}
       <div className="relative w-full max-w-lg mb-8">
-        {/* Machine frame */}
-        <div className="rounded-2xl border-4 border-yellow-500 bg-neutral-900 shadow-[0_0_40px_rgba(250,204,21,0.3)] overflow-hidden">
-          {/* Top bar */}
-          <div className="bg-yellow-500 h-3" />
+        {/* OSRS Chatbox background */}
+        <div className="relative w-full" style={{ aspectRatio: "519/142" }}>
+          <Image
+            src="/chatbox.png"
+            alt="Task selection box"
+            fill
+            className="object-fill"
+            style={{ imageRendering: "pixelated" }}
+            priority
+          />
 
-          {/* Display window */}
-          <div className="relative h-36 flex items-center justify-center overflow-hidden bg-neutral-950 border-y-4 border-yellow-700">
-            {/* Scanline overlay */}
-            <div
-              className="absolute inset-0 pointer-events-none z-10"
-              style={{
-                background:
-                  "repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.15) 2px, rgba(0,0,0,0.15) 4px)",
-              }}
-            />
-            {/* Side shadows for depth */}
-            <div className="absolute left-0 top-0 bottom-0 w-16 bg-gradient-to-r from-neutral-950 to-transparent z-20 pointer-events-none" />
-            <div className="absolute right-0 top-0 bottom-0 w-16 bg-gradient-to-l from-neutral-950 to-transparent z-20 pointer-events-none" />
+          {/* Stacked task reel overlay */}
+          <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-4 py-2">
+            {hasStarted && slotTasks.length >= 5 ? (
+              <div className="flex flex-col items-center w-full gap-0.5">
+                {/* prev2 - darkest */}
+                <div
+                  className="w-full text-center text-xs font-bold truncate px-2 transition-all duration-75"
+                  style={{
+                    color: "rgba(139, 90, 0, 0.55)",
+                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
+                    fontFamily: "'RuneScape Quill 8', monospace",
+                    transform: "scale(0.82)",
+                    opacity: 0.45,
+                  }}
+                >
+                  {slotTasks[0]}
+                </div>
 
-            {displayedTask ? (
-              <span
-                className={`relative z-30 text-3xl font-black text-yellow-400 text-center px-8 tracking-wide transition-all duration-75 ${
-                  isSpinning
-                    ? "blur-[1px] scale-95 opacity-80"
-                    : winner
-                    ? "drop-shadow-[0_0_16px_rgba(250,204,21,0.9)] scale-105"
-                    : ""
-                }`}
-              >
-                {displayedTask}
-              </span>
+                {/* prev1 - medium dark */}
+                <div
+                  className="w-full text-center text-sm font-bold truncate px-2 transition-all duration-75"
+                  style={{
+                    color: "rgba(180, 120, 0, 0.75)",
+                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
+                    fontFamily: "'RuneScape Quill 8', monospace",
+                    transform: "scale(0.9)",
+                    opacity: 0.65,
+                  }}
+                >
+                  {slotTasks[1]}
+                </div>
+
+                {/* CENTER - bright, full size */}
+                <div
+                  className={`w-full text-center font-black truncate px-2 transition-all duration-75 ${
+                    winner && !isSpinning ? "animate-pulse" : ""
+                  }`}
+                  style={{
+                    color: winner && !isSpinning ? "#ffff00" : "#ff981f",
+                    textShadow:
+                      winner && !isSpinning
+                        ? "0 0 12px rgba(255,255,0,0.9), 1px 1px 0 rgba(0,0,0,0.9)"
+                        : "1px 1px 0 rgba(0,0,0,0.9)",
+                    fontFamily: "'RuneScape Quill 8', monospace",
+                    fontSize: "1.05rem",
+                    transform: "scale(1)",
+                    opacity: 1,
+                  }}
+                >
+                  {slotTasks[2]}
+                </div>
+
+                {/* next1 - medium dark */}
+                <div
+                  className="w-full text-center text-sm font-bold truncate px-2 transition-all duration-75"
+                  style={{
+                    color: "rgba(180, 120, 0, 0.75)",
+                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
+                    fontFamily: "'RuneScape Quill 8', monospace",
+                    transform: "scale(0.9)",
+                    opacity: 0.65,
+                  }}
+                >
+                  {slotTasks[3]}
+                </div>
+
+                {/* next2 - darkest */}
+                <div
+                  className="w-full text-center text-xs font-bold truncate px-2 transition-all duration-75"
+                  style={{
+                    color: "rgba(139, 90, 0, 0.55)",
+                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
+                    fontFamily: "'RuneScape Quill 8', monospace",
+                    transform: "scale(0.82)",
+                    opacity: 0.45,
+                  }}
+                >
+                  {slotTasks[4]}
+                </div>
+              </div>
             ) : (
-              <span className="relative z-30 text-yellow-700 text-xl font-bold tracking-widest uppercase">
+              <span
+                className="text-center font-bold"
+                style={{
+                  color: "#ff981f",
+                  textShadow: "1px 1px 0 rgba(0,0,0,0.9)",
+                  fontFamily: "'RuneScape Quill 8', monospace",
+                  fontSize: "1rem",
+                }}
+              >
                 {tasks.length === 0 ? "Add tasks below" : "Press Spin!"}
               </span>
             )}
           </div>
 
-          {/* Bottom bar */}
-          <div className="bg-yellow-500 h-3" />
+          {/* Winner glow ring */}
+          {winner && !isSpinning && (
+            <div className="absolute inset-0 pointer-events-none animate-pulse"
+              style={{
+                boxShadow: "inset 0 0 20px rgba(255,255,0,0.3)",
+              }}
+            />
+          )}
         </div>
-
-        {/* Winner glow ring */}
-        {winner && !isSpinning && (
-          <div className="absolute inset-0 rounded-2xl border-4 border-yellow-300 animate-pulse pointer-events-none shadow-[0_0_60px_rgba(250,204,21,0.5)]" />
-        )}
       </div>
 
       {/* Winner announcement */}
@@ -319,7 +405,7 @@ export default function TaskSelector() {
                   onClick={() => {
                     setTasks([]);
                     setWinner(null);
-                    setDisplayedTask(null);
+                    setCurrentIndex(0);
                   }}
                   className="text-red-600 hover:text-red-400 text-xs uppercase tracking-wider font-bold transition-colors"
                 >
