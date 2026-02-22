@@ -101,3 +101,4 @@ export async function GET() {
 | 2026-02-22 | Fixed GitHub Actions workflow: updated to setup-bun@v2 with explicit bun-version and frozen lockfile for reliable builds |
 | 2026-02-22 | Fixed missing task backgrounds on GitHub Pages: updated image path to include basePath /Task-Roulette-OSRS/ |
 | 2026-02-22 | Fixed spin button exploit: disabled spin when active task is pending (user must complete or skip before spinning again) |
+| 2026-02-22 | Styled task text yellow (#f0c020) and added RuneScape background image repeating vertically |
