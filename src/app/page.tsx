@@ -1,3 +1,5 @@
+import TaskSelector from "@/components/TaskSelector";
+
 export default function Home() {
-  return <main className="min-h-screen bg-neutral-900" />;
+  return <TaskSelector />;
 }
