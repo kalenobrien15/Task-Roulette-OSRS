@@ -5,6 +5,11 @@ import Image from "next/image";
 
 const STORAGE_KEY = "task-selector-entries";
 
+// Slot dimensions
+const SLOT_HEIGHT = 142;
+const SLOT_GAP = 4;
+const SLOT_STEP = SLOT_HEIGHT + SLOT_GAP;
+
 function loadTasksFromStorage(): string[] {
   if (typeof window === "undefined") return [];
   try {
@@ -24,10 +29,16 @@ export default function TaskSelector() {
   const [newTask, setNewTask] = useState("");
   const [showManage, setShowManage] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
-  const [currentIndex, setCurrentIndex] = useState<number>(0);
+  // reelOffset: how many slots we've scrolled (increases each tick)
+  const [reelOffset, setReelOffset] = useState(0);
+  // transitionDuration: ms for the CSS transition on each step
+  const [transitionDuration, setTransitionDuration] = useState(60);
   const [winner, setWinner] = useState<string | null>(null);
   const [error, setError] = useState("");
   const spinIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const speedRef = useRef(60);
+  const elapsedRef = useRef(0);
+  const reelOffsetRef = useRef(0);
 
   // Save tasks to localStorage whenever they change
   useEffect(() => {
@@ -64,35 +75,50 @@ export default function TaskSelector() {
     setWinner(null);
     setIsSpinning(true);
 
-    let speed = 60; // ms between changes
-    let elapsed = 0;
-    const totalDuration = 3500; // ms total spin time
-    let idx = 0;
+    speedRef.current = 60;
+    elapsedRef.current = 0;
+    const totalDuration = 3500;
 
     const tick = () => {
-      idx = (idx + 1) % tasks.length;
-      setCurrentIndex(idx);
-      elapsed += speed;
+      const speed = speedRef.current;
+
+      // Advance reel by 1 slot
+      reelOffsetRef.current += 1;
+      setReelOffset(reelOffsetRef.current);
+      setTransitionDuration(speed);
+
+      elapsedRef.current += speed;
 
       // Gradually slow down
-      if (elapsed > totalDuration * 0.6) {
-        speed = Math.min(speed + 30, 400);
-      } else if (elapsed > totalDuration * 0.3) {
-        speed = Math.min(speed + 10, 200);
+      if (elapsedRef.current > totalDuration * 0.6) {
+        speedRef.current = Math.min(speedRef.current + 30, 400);
+      } else if (elapsedRef.current > totalDuration * 0.3) {
+        speedRef.current = Math.min(speedRef.current + 10, 200);
       }
 
-      if (elapsed < totalDuration) {
-        spinIntervalRef.current = setTimeout(tick, speed);
+      if (elapsedRef.current < totalDuration) {
+        spinIntervalRef.current = setTimeout(tick, speedRef.current);
       } else {
-        // Land on final result
+        // Land on a random final index
         const finalIndex = Math.floor(Math.random() * tasks.length);
-        setCurrentIndex(finalIndex);
-        setWinner(tasks[finalIndex]);
-        setIsSpinning(false);
+        // Adjust reelOffset so that the center slot lands on finalIndex
+        // Center slot index = reelOffsetRef.current mod tasks.length
+        // We want: (reelOffsetRef.current + adjustment) mod tasks.length === finalIndex
+        const currentMod = ((reelOffsetRef.current % tasks.length) + tasks.length) % tasks.length;
+        let adjustment = (finalIndex - currentMod + tasks.length) % tasks.length;
+        if (adjustment === 0) adjustment = tasks.length; // always scroll at least one more
+        reelOffsetRef.current += adjustment;
+        setReelOffset(reelOffsetRef.current);
+        setTransitionDuration(speedRef.current);
+
+        setTimeout(() => {
+          setWinner(tasks[finalIndex]);
+          setIsSpinning(false);
+        }, speedRef.current + 50);
       }
     };
 
-    spinIntervalRef.current = setTimeout(tick, speed);
+    spinIntervalRef.current = setTimeout(tick, speedRef.current);
   }, [tasks]);
 
   // Cleanup on unmount
@@ -103,20 +129,69 @@ export default function TaskSelector() {
     };
   }, []);
 
-  // Helper: get task at offset from currentIndex (wrapping)
-  const getTask = (offset: number): string | null => {
-    if (tasks.length === 0) return null;
-    return tasks[((currentIndex + offset) % tasks.length + tasks.length) % tasks.length];
-  };
-
-  // Slots: -1 (above), 0 (center), +1 (below)
-  const slots = [
-    { offset: -1, opacity: 0.35, textColor: "#555" },
-    { offset: 0,  opacity: 1,    textColor: "#000" },
-    { offset: 1,  opacity: 0.35, textColor: "#555" },
-  ];
-
   const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
+
+  // Build the visible reel slots.
+  // We show 3 slots: offsets -1, 0, +1 relative to reelOffset.
+  // The reel is a tall column that we translate upward.
+  // We render a window of 5 slots centered on reelOffset to ensure smooth scrolling.
+  // The translateY moves the reel so the center slot is visible in the middle.
+  //
+  // Strategy: render a fixed set of slots around the current position.
+  // We'll render slots at indices: reelOffset-2, reelOffset-1, reelOffset, reelOffset+1, reelOffset+2
+  // The container clips to show only 3 slots (prev, center, next).
+  // translateY shifts so that slot at reelOffset is in the center position.
+
+  const RENDER_SLOTS = 5; // render 5 slots: 2 above, center, 2 below
+  const VISIBLE_SLOTS = 3; // show 3 slots in the viewport
+
+  // The viewport height shows 3 slots
+  const viewportHeight = VISIBLE_SLOTS * SLOT_HEIGHT + (VISIBLE_SLOTS - 1) * SLOT_GAP;
+
+  // The reel column height for RENDER_SLOTS slots
+  const reelHeight = RENDER_SLOTS * SLOT_HEIGHT + (RENDER_SLOTS - 1) * SLOT_GAP;
+
+  // translateY: position the reel so the center slot (index 2 in the 5-slot render) aligns with the center of the viewport
+  // Center of viewport = SLOT_STEP (one slot from top, since we show 3 slots: 0, 1, 2)
+  // Center slot in reel = index 2 → top = 2 * SLOT_STEP
+  // We want reel's center slot top to align with viewport's center slot top (= SLOT_STEP)
+  // So translateY = -(2 * SLOT_STEP - SLOT_STEP) = -SLOT_STEP
+  // But we also animate: each tick adds SLOT_STEP to the translation to scroll up by one slot
+  // We use CSS transition on the reel's translateY.
+  //
+  // Actually: we render 5 slots at fixed positions (0..4 * SLOT_STEP).
+  // The slot at render-index 2 is the "center" slot.
+  // We want it to appear at viewport y = SLOT_STEP (the middle of 3 visible slots).
+  // So the reel's top should be at: SLOT_STEP - 2*SLOT_STEP = -SLOT_STEP
+  // This is a static offset; the scrolling animation is handled differently.
+  //
+  // Better approach: use a continuously growing translateY.
+  // Each tick, reelOffset increases by 1. We translate the reel by -reelOffset * SLOT_STEP.
+  // We render enough slots so the visible window always has content.
+  // We render slots from (reelOffset - 2) to (reelOffset + 2) in task-index space.
+  // Their positions in the reel column are at fixed y = (i - (reelOffset-2)) * SLOT_STEP.
+  // The reel column starts at y=0 in its own coordinate space.
+  // We want slot at render-index 2 (= reelOffset) to appear at viewport center (y = SLOT_STEP).
+  // translateY = SLOT_STEP - 2*SLOT_STEP = -SLOT_STEP (static, since we re-render each tick).
+  //
+  // Since we re-render the reel slots each tick (they're always centered on reelOffset),
+  // the CSS transition on translateY won't animate between ticks — the reel content shifts.
+  // To get the scrolling animation, we need to NOT re-center the reel each tick.
+  //
+  // FINAL APPROACH:
+  // - Render a large number of slots (e.g., 200) starting from index 0.
+  // - translateY = -reelOffset * SLOT_STEP + SLOT_STEP (to center the current slot)
+  // - CSS transition animates the translateY change each tick.
+  // - Task at slot i = tasks[i % tasks.length]
+  // - This gives true slot machine scrolling.
+
+  const TOTAL_RENDER_SLOTS = Math.max(200, reelOffset + 10);
+
+  // translateY: slot at reelOffset should be at viewport center (y = SLOT_STEP from viewport top)
+  // Slot reelOffset top in reel = reelOffset * SLOT_STEP
+  // We want it at viewport y = SLOT_STEP
+  // So reel top = SLOT_STEP - reelOffset * SLOT_STEP
+  const translateY = SLOT_STEP - reelOffset * SLOT_STEP;
 
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col items-center py-10 px-4">
@@ -128,52 +203,97 @@ export default function TaskSelector() {
         Spin to decide your fate
       </p>
 
-      {/* Stacked reel — 3 chatboxes, center is active */}
-      <div className="relative mb-8 flex flex-col items-center gap-1" style={{ width: 519 }}>
-        {slots.map(({ offset, opacity, textColor }) => {
-          const task = getTask(offset);
-          const isCenter = offset === 0;
-          return (
-            <div
-              key={offset}
-              className="relative"
-              style={{ width: 519, height: 142, opacity }}
-            >
-              {/* Chatbox background */}
-              <Image
-                src="/chatbox.png"
-                alt="Dialogue box"
-                width={519}
-                height={142}
-                style={{ imageRendering: "pixelated", position: "absolute", top: 0, left: 0 }}
-                priority={isCenter}
-              />
-              {/* Task text — centered in the box */}
+      {/* Slot machine reel viewport */}
+      <div
+        className="relative mb-8"
+        style={{
+          width: 519,
+          height: viewportHeight,
+          overflow: "hidden",
+        }}
+      >
+        {/* Fade masks at top and bottom */}
+        <div
+          className="absolute inset-x-0 top-0 z-10 pointer-events-none"
+          style={{
+            height: SLOT_HEIGHT,
+            background: "linear-gradient(to bottom, rgba(10,10,10,0.85) 0%, transparent 100%)",
+          }}
+        />
+        <div
+          className="absolute inset-x-0 bottom-0 z-10 pointer-events-none"
+          style={{
+            height: SLOT_HEIGHT,
+            background: "linear-gradient(to top, rgba(10,10,10,0.85) 0%, transparent 100%)",
+          }}
+        />
+
+        {/* Scrolling reel */}
+        <div
+          style={{
+            position: "absolute",
+            top: 0,
+            left: 0,
+            width: 519,
+            height: reelHeight,
+            transform: `translateY(${translateY}px)`,
+            transition: `transform ${transitionDuration}ms linear`,
+            display: "flex",
+            flexDirection: "column",
+            gap: SLOT_GAP,
+          }}
+        >
+          {Array.from({ length: TOTAL_RENDER_SLOTS }, (_, i) => {
+            const taskIndex = i % (tasks.length || 1);
+            const task = tasks.length > 0 ? tasks[taskIndex] : null;
+            const isCenter = i === reelOffset;
+
+            return (
               <div
+                key={i}
                 style={{
-                  position: "absolute",
-                  inset: 0,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
-                  fontSize: 16,
-                  color: textColor,
-                  paddingLeft: 24,
-                  paddingRight: 24,
-                  boxSizing: "border-box",
-                  textAlign: "center",
+                  width: 519,
+                  height: SLOT_HEIGHT,
+                  flexShrink: 0,
+                  position: "relative",
                 }}
               >
-                {isCenter && !hasStarted
-                  ? tasks.length === 0
-                    ? "Add tasks below to begin."
-                    : "Press Spin to decide your fate!"
-                  : task ?? ""}
+                {/* Chatbox background */}
+                <Image
+                  src="/chatbox.png"
+                  alt="Dialogue box"
+                  width={519}
+                  height={142}
+                  style={{ imageRendering: "pixelated", position: "absolute", top: 0, left: 0 }}
+                  priority={isCenter}
+                />
+                {/* Task text */}
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    display: "flex",
+                    alignItems: "center",
+                    justifyContent: "center",
+                    fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
+                    fontSize: 16,
+                    color: "#000",
+                    paddingLeft: 24,
+                    paddingRight: 24,
+                    boxSizing: "border-box",
+                    textAlign: "center",
+                  }}
+                >
+                  {isCenter && !hasStarted
+                    ? tasks.length === 0
+                      ? "Add tasks below to begin."
+                      : "Press Spin to decide your fate!"
+                    : task ?? ""}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })}
+        </div>
       </div>
 
       {/* Winner announcement */}
@@ -332,7 +452,8 @@ export default function TaskSelector() {
                   onClick={() => {
                     setTasks([]);
                     setWinner(null);
-                    setCurrentIndex(0);
+                    setReelOffset(0);
+                    reelOffsetRef.current = 0;
                   }}
                   className="text-red-600 hover:text-red-400 text-xs uppercase tracking-wider font-bold transition-colors"
                 >
