@@ -1,1 +1,8 @@
 @import "tailwindcss";
+
+body {
+  background-image: url("https://www.runescape.com/img/rsp777/bg2.jpg");
+  background-repeat: repeat-y;
+  background-size: 100% auto;
+  background-attachment: scroll;
+}

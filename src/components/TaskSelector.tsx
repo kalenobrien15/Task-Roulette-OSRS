@@ -507,7 +507,7 @@ export default function TaskSelector() {
                     justifyContent: "center",
                     fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
                     fontSize: 16,
-                    color: "#000",
+                    color: "#f0c020",
                     paddingLeft: 24,
                     paddingRight: 24,
                     boxSizing: "border-box",
