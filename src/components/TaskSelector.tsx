@@ -490,7 +490,7 @@ export default function TaskSelector() {
               >
                 {/* Chatbox background */}
                 <Image
-                  src="/chatbox.png"
+                  src="/Task-Roulette-OSRS/chatbox.png"
                   alt="Dialogue box"
                   width={519}
                   height={142}
