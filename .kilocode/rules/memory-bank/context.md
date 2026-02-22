@@ -99,3 +99,4 @@ export async function GET() {
 | 2026-02-22 | Added active task persistence: current task is saved to localStorage and restored on page refresh, preventing users from spinning away from an active task |
 | 2026-02-22 | Configured for GitHub Pages deployment: added static export to next.config.ts with basePath /Task-Roulette-OSRS, created GitHub Actions workflow for automatic deployment on push to main |
 | 2026-02-22 | Fixed GitHub Actions workflow: updated to setup-bun@v2 with explicit bun-version and frozen lockfile for reliable builds |
+| 2026-02-22 | Fixed missing task backgrounds on GitHub Pages: updated image path to include basePath /Task-Roulette-OSRS/ |
