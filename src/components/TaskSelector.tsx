@@ -8,7 +8,13 @@ const STORAGE_KEY = "task-selector-entries";
 // Slot dimensions
 const SLOT_HEIGHT = 142;
 const SLOT_GAP = 4;
-const SLOT_STEP = SLOT_HEIGHT + SLOT_GAP;
+const SLOT_STEP = SLOT_HEIGHT + SLOT_GAP; // 146px per slot
+
+// How many full cycles to render in the reel
+// We spin through SPIN_CYCLES full loops before landing
+const SPIN_CYCLES = 5;
+// Extra cycles rendered after the landing slot so the reel has content below
+const EXTRA_CYCLES = 1;
 
 function loadTasksFromStorage(): string[] {
   if (typeof window === "undefined") return [];
@@ -29,16 +35,22 @@ export default function TaskSelector() {
   const [newTask, setNewTask] = useState("");
   const [showManage, setShowManage] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
-  // reelOffset: how many slots we've scrolled (increases each tick)
-  const [reelOffset, setReelOffset] = useState(0);
-  // transitionDuration: ms for the CSS transition on each step
-  const [transitionDuration, setTransitionDuration] = useState(60);
   const [winner, setWinner] = useState<string | null>(null);
   const [error, setError] = useState("");
-  const spinIntervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const speedRef = useRef(60);
-  const elapsedRef = useRef(0);
-  const reelOffsetRef = useRef(0);
+
+  // translateY for the reel column (in px, negative = scrolled up)
+  const [translateY, setTranslateY] = useState(0);
+  // CSS transition string — empty string = instant (no animation)
+  const [transition, setTransition] = useState("none");
+
+  // The reel key forces a full re-render of the reel between spins
+  // so we can reset position instantly without a visible jump
+  const [reelKey, setReelKey] = useState(0);
+
+  // Which slot index (in the rendered reel) is the target for this spin
+  const targetSlotRef = useRef(0);
+  // The finalIndex into tasks[] for the current spin
+  const finalIndexRef = useRef(0);
 
   // Save tasks to localStorage whenever they change
   useEffect(() => {
@@ -75,123 +87,67 @@ export default function TaskSelector() {
     setWinner(null);
     setIsSpinning(true);
 
-    speedRef.current = 60;
-    elapsedRef.current = 0;
-    const totalDuration = 3500;
+    // Pick the winner now
+    const finalIndex = Math.floor(Math.random() * tasks.length);
+    finalIndexRef.current = finalIndex;
 
-    const tick = () => {
-      const speed = speedRef.current;
+    // The target slot in the rendered reel:
+    // We spin through SPIN_CYCLES full loops, then land on finalIndex in the next cycle.
+    // targetSlot = SPIN_CYCLES * tasks.length + finalIndex
+    const targetSlot = SPIN_CYCLES * tasks.length + finalIndex;
+    targetSlotRef.current = targetSlot;
 
-      // Advance reel by 1 slot
-      reelOffsetRef.current += 1;
-      setReelOffset(reelOffsetRef.current);
-      setTransitionDuration(speed);
+    // The translateY that centers the target slot in the viewport:
+    // Slot at index i has its top at i * SLOT_STEP.
+    // We want it at viewport y = SLOT_STEP (center of 3-slot viewport).
+    // So reel top = SLOT_STEP - targetSlot * SLOT_STEP
+    const targetTranslateY = SLOT_STEP - targetSlot * SLOT_STEP;
 
-      elapsedRef.current += speed;
+    // Step 1: Reset reel to position 0 instantly (no transition), then on next frame start the spin
+    // We increment reelKey to force a fresh reel render starting at translateY = 0
+    setReelKey((k) => k + 1);
+    setTranslateY(0);
+    setTransition("none");
 
-      // Gradually slow down
-      if (elapsedRef.current > totalDuration * 0.6) {
-        speedRef.current = Math.min(speedRef.current + 30, 400);
-      } else if (elapsedRef.current > totalDuration * 0.3) {
-        speedRef.current = Math.min(speedRef.current + 10, 200);
-      }
+    // Step 2: On next frame, kick off the spin animation
+    // Use a two-frame delay to ensure the DOM has updated with the reset position
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        // Randomize total spin duration slightly for variety: 3.5–5s
+        const duration = 3500 + Math.random() * 1500;
 
-      if (elapsedRef.current < totalDuration) {
-        spinIntervalRef.current = setTimeout(tick, speedRef.current);
-      } else {
-        // Land on a random final index
-        const finalIndex = Math.floor(Math.random() * tasks.length);
-        // Adjust reelOffset so that the center slot lands on finalIndex
-        // Center slot index = reelOffsetRef.current mod tasks.length
-        // We want: (reelOffsetRef.current + adjustment) mod tasks.length === finalIndex
-        const currentMod = ((reelOffsetRef.current % tasks.length) + tasks.length) % tasks.length;
-        let adjustment = (finalIndex - currentMod + tasks.length) % tasks.length;
-        if (adjustment === 0) adjustment = tasks.length; // always scroll at least one more
-        reelOffsetRef.current += adjustment;
-        setReelOffset(reelOffsetRef.current);
-        setTransitionDuration(speedRef.current);
-
-        setTimeout(() => {
-          setWinner(tasks[finalIndex]);
-          setIsSpinning(false);
-        }, speedRef.current + 50);
-      }
-    };
-
-    spinIntervalRef.current = setTimeout(tick, speedRef.current);
+        // Custom cubic-bezier: fast start, very slow end (slot machine feel)
+        // This easing accelerates quickly then decelerates dramatically at the end
+        setTransition(`transform ${duration}ms cubic-bezier(0.12, 0.8, 0.2, 1.0)`);
+        setTranslateY(targetTranslateY);
+      });
+    });
   }, [tasks]);
+
+  // Handle transition end — announce winner
+  const handleTransitionEnd = useCallback(() => {
+    if (!isSpinning) return;
+    setWinner(tasks[finalIndexRef.current]);
+    setIsSpinning(false);
+  }, [isSpinning, tasks]);
 
   // Cleanup on unmount
   useEffect(() => {
-    const ref = spinIntervalRef;
     return () => {
-      if (ref.current) clearTimeout(ref.current);
+      // nothing to clean up with CSS transitions
     };
   }, []);
 
-  const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
+  // Build the reel: (SPIN_CYCLES + EXTRA_CYCLES + 1) * tasks.length slots
+  // +1 for the initial "slot 0" that's visible before spinning
+  const totalSlots = tasks.length > 0
+    ? (SPIN_CYCLES + EXTRA_CYCLES + 1) * tasks.length
+    : 3; // fallback for empty state
 
-  // Build the visible reel slots.
-  // We show 3 slots: offsets -1, 0, +1 relative to reelOffset.
-  // The reel is a tall column that we translate upward.
-  // We render a window of 5 slots centered on reelOffset to ensure smooth scrolling.
-  // The translateY moves the reel so the center slot is visible in the middle.
-  //
-  // Strategy: render a fixed set of slots around the current position.
-  // We'll render slots at indices: reelOffset-2, reelOffset-1, reelOffset, reelOffset+1, reelOffset+2
-  // The container clips to show only 3 slots (prev, center, next).
-  // translateY shifts so that slot at reelOffset is in the center position.
-
-  const RENDER_SLOTS = 5; // render 5 slots: 2 above, center, 2 below
-  const VISIBLE_SLOTS = 3; // show 3 slots in the viewport
-
-  // The viewport height shows 3 slots
+  const VISIBLE_SLOTS = 3;
   const viewportHeight = VISIBLE_SLOTS * SLOT_HEIGHT + (VISIBLE_SLOTS - 1) * SLOT_GAP;
 
-  // The reel column height for RENDER_SLOTS slots
-  const reelHeight = RENDER_SLOTS * SLOT_HEIGHT + (RENDER_SLOTS - 1) * SLOT_GAP;
-
-  // translateY: position the reel so the center slot (index 2 in the 5-slot render) aligns with the center of the viewport
-  // Center of viewport = SLOT_STEP (one slot from top, since we show 3 slots: 0, 1, 2)
-  // Center slot in reel = index 2 → top = 2 * SLOT_STEP
-  // We want reel's center slot top to align with viewport's center slot top (= SLOT_STEP)
-  // So translateY = -(2 * SLOT_STEP - SLOT_STEP) = -SLOT_STEP
-  // But we also animate: each tick adds SLOT_STEP to the translation to scroll up by one slot
-  // We use CSS transition on the reel's translateY.
-  //
-  // Actually: we render 5 slots at fixed positions (0..4 * SLOT_STEP).
-  // The slot at render-index 2 is the "center" slot.
-  // We want it to appear at viewport y = SLOT_STEP (the middle of 3 visible slots).
-  // So the reel's top should be at: SLOT_STEP - 2*SLOT_STEP = -SLOT_STEP
-  // This is a static offset; the scrolling animation is handled differently.
-  //
-  // Better approach: use a continuously growing translateY.
-  // Each tick, reelOffset increases by 1. We translate the reel by -reelOffset * SLOT_STEP.
-  // We render enough slots so the visible window always has content.
-  // We render slots from (reelOffset - 2) to (reelOffset + 2) in task-index space.
-  // Their positions in the reel column are at fixed y = (i - (reelOffset-2)) * SLOT_STEP.
-  // The reel column starts at y=0 in its own coordinate space.
-  // We want slot at render-index 2 (= reelOffset) to appear at viewport center (y = SLOT_STEP).
-  // translateY = SLOT_STEP - 2*SLOT_STEP = -SLOT_STEP (static, since we re-render each tick).
-  //
-  // Since we re-render the reel slots each tick (they're always centered on reelOffset),
-  // the CSS transition on translateY won't animate between ticks — the reel content shifts.
-  // To get the scrolling animation, we need to NOT re-center the reel each tick.
-  //
-  // FINAL APPROACH:
-  // - Render a large number of slots (e.g., 200) starting from index 0.
-  // - translateY = -reelOffset * SLOT_STEP + SLOT_STEP (to center the current slot)
-  // - CSS transition animates the translateY change each tick.
-  // - Task at slot i = tasks[i % tasks.length]
-  // - This gives true slot machine scrolling.
-
-  const TOTAL_RENDER_SLOTS = Math.max(200, reelOffset + 10);
-
-  // translateY: slot at reelOffset should be at viewport center (y = SLOT_STEP from viewport top)
-  // Slot reelOffset top in reel = reelOffset * SLOT_STEP
-  // We want it at viewport y = SLOT_STEP
-  // So reel top = SLOT_STEP - reelOffset * SLOT_STEP
-  const translateY = SLOT_STEP - reelOffset * SLOT_STEP;
+  const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
 
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col items-center py-10 px-4">
@@ -230,23 +186,26 @@ export default function TaskSelector() {
 
         {/* Scrolling reel */}
         <div
+          key={reelKey}
+          onTransitionEnd={handleTransitionEnd}
           style={{
             position: "absolute",
             top: 0,
             left: 0,
             width: 519,
-            height: reelHeight,
             transform: `translateY(${translateY}px)`,
-            transition: `transform ${transitionDuration}ms linear`,
+            transition: transition,
             display: "flex",
             flexDirection: "column",
             gap: SLOT_GAP,
+            willChange: "transform",
           }}
         >
-          {Array.from({ length: TOTAL_RENDER_SLOTS }, (_, i) => {
-            const taskIndex = i % (tasks.length || 1);
+          {Array.from({ length: totalSlots }, (_, i) => {
+            const taskIndex = tasks.length > 0 ? i % tasks.length : 0;
             const task = tasks.length > 0 ? tasks[taskIndex] : null;
-            const isCenter = i === reelOffset;
+            // Show placeholder text only in slot 0 before spinning
+            const isSlotZero = i === 0;
 
             return (
               <div
@@ -265,7 +224,7 @@ export default function TaskSelector() {
                   width={519}
                   height={142}
                   style={{ imageRendering: "pixelated", position: "absolute", top: 0, left: 0 }}
-                  priority={isCenter}
+                  priority={isSlotZero}
                 />
                 {/* Task text */}
                 <div
@@ -284,7 +243,7 @@ export default function TaskSelector() {
                     textAlign: "center",
                   }}
                 >
-                  {isCenter && !hasStarted
+                  {isSlotZero && !hasStarted
                     ? tasks.length === 0
                       ? "Add tasks below to begin."
                       : "Press Spin to decide your fate!"
@@ -452,8 +411,9 @@ export default function TaskSelector() {
                   onClick={() => {
                     setTasks([]);
                     setWinner(null);
-                    setReelOffset(0);
-                    reelOffsetRef.current = 0;
+                    setTranslateY(0);
+                    setTransition("none");
+                    setReelKey((k) => k + 1);
                   }}
                   className="text-red-600 hover:text-red-400 text-xs uppercase tracking-wider font-bold transition-colors"
                 >
