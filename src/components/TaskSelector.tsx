@@ -24,7 +24,6 @@ export default function TaskSelector() {
   const [newTask, setNewTask] = useState("");
   const [showManage, setShowManage] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
-  // currentIndex tracks which task is "centered" in the reel
   const [currentIndex, setCurrentIndex] = useState<number>(0);
   const [winner, setWinner] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -104,20 +103,11 @@ export default function TaskSelector() {
     };
   }, []);
 
-  // Compute the 5 visible slots: prev2, prev1, center, next1, next2
-  const getSlotTasks = () => {
-    if (tasks.length === 0) return [];
-    const n = tasks.length;
-    return [
-      tasks[((currentIndex - 2) % n + n) % n],
-      tasks[((currentIndex - 1) % n + n) % n],
-      tasks[currentIndex % n],
-      tasks[(currentIndex + 1) % n],
-      tasks[(currentIndex + 2) % n],
-    ];
-  };
+  // The task currently shown in the dialogue box
+  const displayedTask =
+    tasks.length > 0 ? tasks[currentIndex % tasks.length] : null;
 
-  const slotTasks = getSlotTasks();
+  // Dialogue box state
   const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
 
   return (
@@ -130,121 +120,100 @@ export default function TaskSelector() {
         Spin to decide your fate
       </p>
 
-      {/* Slot Machine Display */}
-      <div className="relative w-full max-w-lg mb-8">
-        {/* OSRS Chatbox background */}
-        <div className="relative w-full" style={{ aspectRatio: "519/142" }}>
+      {/* OSRS Chathead Dialogue Box */}
+      <div className="relative mb-8" style={{ width: 519, height: 155 }}>
+        {/* Blank chatbox background */}
+        <Image
+          src="/chatbox.png"
+          alt="Dialogue box"
+          width={519}
+          height={142}
+          style={{ imageRendering: "pixelated", position: "absolute", top: 0, left: 0 }}
+          priority
+        />
+
+        {/* Chathead image — vertically centered on the left */}
+        <div
+          style={{
+            position: "absolute",
+            top: "50%",
+            left: 21,
+            transform: "translateY(-50%)",
+            imageRendering: "pixelated",
+          }}
+        >
           <Image
-            src="/chatbox.png"
-            alt="Task selection box"
-            fill
-            className="object-fill"
+            src="/chathead.png"
+            alt="Chathead"
+            width={64}
+            height={110}
             style={{ imageRendering: "pixelated" }}
-            priority
           />
+        </div>
 
-          {/* Stacked task reel overlay */}
-          <div className="absolute inset-0 flex flex-col items-center justify-center overflow-hidden px-4 py-2">
-            {hasStarted && slotTasks.length >= 5 ? (
-              <div className="flex flex-col items-center w-full gap-0.5">
-                {/* prev2 - darkest */}
-                <div
-                  className="w-full text-center text-xs font-bold truncate px-2 transition-all duration-75"
-                  style={{
-                    color: "rgba(139, 90, 0, 0.55)",
-                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
-                    fontFamily: "'RuneScape Quill 8', monospace",
-                    transform: "scale(0.82)",
-                    opacity: 0.45,
-                  }}
-                >
-                  {slotTasks[0]}
-                </div>
+        {/* Text overlay */}
+        <div
+          style={{
+            position: "absolute",
+            width: "100%",
+            height: 142,
+            fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
+            fontSize: 16,
+            textAlign: "center",
+            paddingLeft: 40,
+            boxSizing: "border-box",
+          }}
+        >
+          {/* Speaker name — dark red, top */}
+          <div
+            style={{
+              position: "absolute",
+              top: 15,
+              width: "100%",
+              color: "#8B0000",
+              whiteSpace: "nowrap",
+            }}
+          >
+            Task Roulette
+          </div>
 
-                {/* prev1 - medium dark */}
-                <div
-                  className="w-full text-center text-sm font-bold truncate px-2 transition-all duration-75"
-                  style={{
-                    color: "rgba(180, 120, 0, 0.75)",
-                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
-                    fontFamily: "'RuneScape Quill 8', monospace",
-                    transform: "scale(0.9)",
-                    opacity: 0.65,
-                  }}
-                >
-                  {slotTasks[1]}
-                </div>
-
-                {/* CENTER - bright, full size */}
-                <div
-                  className={`w-full text-center font-black truncate px-2 transition-all duration-75 ${
-                    winner && !isSpinning ? "animate-pulse" : ""
-                  }`}
-                  style={{
-                    color: winner && !isSpinning ? "#ffff00" : "#ff981f",
-                    textShadow:
-                      winner && !isSpinning
-                        ? "0 0 12px rgba(255,255,0,0.9), 1px 1px 0 rgba(0,0,0,0.9)"
-                        : "1px 1px 0 rgba(0,0,0,0.9)",
-                    fontFamily: "'RuneScape Quill 8', monospace",
-                    fontSize: "1.05rem",
-                    transform: "scale(1)",
-                    opacity: 1,
-                  }}
-                >
-                  {slotTasks[2]}
-                </div>
-
-                {/* next1 - medium dark */}
-                <div
-                  className="w-full text-center text-sm font-bold truncate px-2 transition-all duration-75"
-                  style={{
-                    color: "rgba(180, 120, 0, 0.75)",
-                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
-                    fontFamily: "'RuneScape Quill 8', monospace",
-                    transform: "scale(0.9)",
-                    opacity: 0.65,
-                  }}
-                >
-                  {slotTasks[3]}
-                </div>
-
-                {/* next2 - darkest */}
-                <div
-                  className="w-full text-center text-xs font-bold truncate px-2 transition-all duration-75"
-                  style={{
-                    color: "rgba(139, 90, 0, 0.55)",
-                    textShadow: "1px 1px 0 rgba(0,0,0,0.8)",
-                    fontFamily: "'RuneScape Quill 8', monospace",
-                    transform: "scale(0.82)",
-                    opacity: 0.45,
-                  }}
-                >
-                  {slotTasks[4]}
-                </div>
-              </div>
+          {/* Main dialogue text — black, vertically centered, offset right of chathead */}
+          <div
+            style={{
+              position: "absolute",
+              top: "50%",
+              left: 0,
+              transform: "translateY(-60%)",
+              width: "100%",
+              paddingLeft: 75,
+              boxSizing: "border-box",
+              color: "#000000",
+              textAlign: "center",
+            }}
+          >
+            {hasStarted && displayedTask ? (
+              displayedTask
+            ) : tasks.length === 0 ? (
+              "Add tasks below to begin."
             ) : (
-              <span
-                className="text-center font-bold"
-                style={{
-                  color: "#ff981f",
-                  textShadow: "1px 1px 0 rgba(0,0,0,0.9)",
-                  fontFamily: "'RuneScape Quill 8', monospace",
-                  fontSize: "1rem",
-                }}
-              >
-                {tasks.length === 0 ? "Add tasks below" : "Press Spin!"}
-              </span>
+              "Press Spin to decide your fate!"
             )}
           </div>
 
-          {/* Winner glow ring */}
+          {/* "Click here to continue" — blue, bottom — only shown when winner is selected */}
           {winner && !isSpinning && (
-            <div className="absolute inset-0 pointer-events-none animate-pulse"
+            <div
               style={{
-                boxShadow: "inset 0 0 20px rgba(255,255,0,0.3)",
+                position: "absolute",
+                bottom: 25,
+                width: "100%",
+                color: "#0000FF",
+                whiteSpace: "nowrap",
+                animation: "pulse 1s ease-in-out infinite",
               }}
-            />
+            >
+              Click here to continue
+            </div>
           )}
         </div>
       </div>
