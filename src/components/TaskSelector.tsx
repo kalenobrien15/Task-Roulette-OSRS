@@ -103,11 +103,19 @@ export default function TaskSelector() {
     };
   }, []);
 
-  // The task currently shown in the dialogue box
-  const displayedTask =
-    tasks.length > 0 ? tasks[currentIndex % tasks.length] : null;
+  // Helper: get task at offset from currentIndex (wrapping)
+  const getTask = (offset: number): string | null => {
+    if (tasks.length === 0) return null;
+    return tasks[((currentIndex + offset) % tasks.length + tasks.length) % tasks.length];
+  };
 
-  // Dialogue box state
+  // Slots: -1 (above), 0 (center), +1 (below)
+  const slots = [
+    { offset: -1, opacity: 0.35, textColor: "#555" },
+    { offset: 0,  opacity: 1,    textColor: "#000" },
+    { offset: 1,  opacity: 0.35, textColor: "#555" },
+  ];
+
   const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
 
   return (
@@ -120,102 +128,52 @@ export default function TaskSelector() {
         Spin to decide your fate
       </p>
 
-      {/* OSRS Chathead Dialogue Box */}
-      <div className="relative mb-8" style={{ width: 519, height: 155 }}>
-        {/* Blank chatbox background */}
-        <Image
-          src="/chatbox.png"
-          alt="Dialogue box"
-          width={519}
-          height={142}
-          style={{ imageRendering: "pixelated", position: "absolute", top: 0, left: 0 }}
-          priority
-        />
-
-        {/* Chathead image — vertically centered on the left */}
-        <div
-          style={{
-            position: "absolute",
-            top: "50%",
-            left: 21,
-            transform: "translateY(-50%)",
-            imageRendering: "pixelated",
-          }}
-        >
-          <Image
-            src="/chathead.png"
-            alt="Chathead"
-            width={64}
-            height={110}
-            style={{ imageRendering: "pixelated" }}
-          />
-        </div>
-
-        {/* Text overlay */}
-        <div
-          style={{
-            position: "absolute",
-            width: "100%",
-            height: 142,
-            fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
-            fontSize: 16,
-            textAlign: "center",
-            paddingLeft: 40,
-            boxSizing: "border-box",
-          }}
-        >
-          {/* Speaker name — dark red, top */}
-          <div
-            style={{
-              position: "absolute",
-              top: 15,
-              width: "100%",
-              color: "#8B0000",
-              whiteSpace: "nowrap",
-            }}
-          >
-            Task Roulette
-          </div>
-
-          {/* Main dialogue text — black, vertically centered, offset right of chathead */}
-          <div
-            style={{
-              position: "absolute",
-              top: "50%",
-              left: 0,
-              transform: "translateY(-60%)",
-              width: "100%",
-              paddingLeft: 75,
-              boxSizing: "border-box",
-              color: "#000000",
-              textAlign: "center",
-            }}
-          >
-            {hasStarted && displayedTask ? (
-              displayedTask
-            ) : tasks.length === 0 ? (
-              "Add tasks below to begin."
-            ) : (
-              "Press Spin to decide your fate!"
-            )}
-          </div>
-
-          {/* "Click here to continue" — blue, bottom — only shown when winner is selected */}
-          {winner && !isSpinning && (
+      {/* Stacked reel — 3 chatboxes, center is active */}
+      <div className="relative mb-8 flex flex-col items-center gap-1" style={{ width: 519 }}>
+        {slots.map(({ offset, opacity, textColor }) => {
+          const task = getTask(offset);
+          const isCenter = offset === 0;
+          return (
             <div
-              style={{
-                position: "absolute",
-                bottom: 25,
-                width: "100%",
-                color: "#0000FF",
-                whiteSpace: "nowrap",
-                animation: "pulse 1s ease-in-out infinite",
-              }}
+              key={offset}
+              className="relative"
+              style={{ width: 519, height: 142, opacity }}
             >
-              Click here to continue
+              {/* Chatbox background */}
+              <Image
+                src="/chatbox.png"
+                alt="Dialogue box"
+                width={519}
+                height={142}
+                style={{ imageRendering: "pixelated", position: "absolute", top: 0, left: 0 }}
+                priority={isCenter}
+              />
+              {/* Task text — centered in the box */}
+              <div
+                style={{
+                  position: "absolute",
+                  inset: 0,
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
+                  fontSize: 16,
+                  color: textColor,
+                  paddingLeft: 24,
+                  paddingRight: 24,
+                  boxSizing: "border-box",
+                  textAlign: "center",
+                }}
+              >
+                {isCenter && !hasStarted
+                  ? tasks.length === 0
+                    ? "Add tasks below to begin."
+                    : "Press Spin to decide your fate!"
+                  : task ?? ""}
+              </div>
             </div>
-          )}
-        </div>
+          );
+        })}
       </div>
 
       {/* Winner announcement */}
