@@ -85,3 +85,4 @@ export async function GET() {
 | Date | Changes |
 |------|---------|
 | Initial | Template created with base setup |
+| 2026-02-22 | Built Task Roulette app — slot machine task selector with yellow theme, localStorage persistence, manage/remove modal |
