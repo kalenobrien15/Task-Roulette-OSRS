@@ -4,6 +4,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import Image from "next/image";
 
 const STORAGE_KEY = "task-selector-entries";
+const COMPLETED_STORAGE_KEY = "task-selector-completed";
+const CREDITS_STORAGE_KEY = "task-selector-credits";
+const STREAK_STORAGE_KEY = "task-selector-streak";
 
 // Slot dimensions
 const SLOT_HEIGHT = 142;
@@ -16,18 +19,22 @@ const SPIN_CYCLES = 5;
 // Extra cycles rendered after the landing slot so the reel has content below
 const EXTRA_CYCLES = 1;
 
-function loadTasksFromStorage(): string[] {
-  if (typeof window === "undefined") return [];
+// Credit thresholds
+const TASKS_PER_CREDIT = 5;       // every 5 completions → +1 credit
+const STREAK_BONUS_THRESHOLD = 10; // 10 in a row without skipping → +1 bonus credit
+
+function loadFromStorage<T>(key: string, fallback: T): T {
+  if (typeof window === "undefined") return fallback;
   try {
-    const stored = localStorage.getItem(STORAGE_KEY);
+    const stored = localStorage.getItem(key);
     if (stored) {
       const parsed = JSON.parse(stored);
-      if (Array.isArray(parsed)) return parsed;
+      return parsed as T;
     }
   } catch {
     // ignore parse errors
   }
-  return [];
+  return fallback;
 }
 
 /** Play a short metronome-style tick using the Web Audio API */
@@ -51,9 +58,24 @@ function playTick(audioCtx: AudioContext) {
 }
 
 export default function TaskSelector() {
-  const [tasks, setTasks] = useState<string[]>(loadTasksFromStorage);
+  const [tasks, setTasks] = useState<string[]>(() =>
+    loadFromStorage<string[]>(STORAGE_KEY, [])
+  );
+  const [completedTasks, setCompletedTasks] = useState<string[]>(() =>
+    loadFromStorage<string[]>(COMPLETED_STORAGE_KEY, [])
+  );
+  // skipCredits: number of available skip credits
+  const [skipCredits, setSkipCredits] = useState<number>(() =>
+    loadFromStorage<number>(CREDITS_STORAGE_KEY, 0)
+  );
+  // streak: consecutive completions without skipping
+  const [streak, setStreak] = useState<number>(() =>
+    loadFromStorage<number>(STREAK_STORAGE_KEY, 0)
+  );
+
   const [newTask, setNewTask] = useState("");
   const [showManage, setShowManage] = useState(false);
+  const [showCompleted, setShowCompleted] = useState(false);
   const [isSpinning, setIsSpinning] = useState(false);
   const [winner, setWinner] = useState<string | null>(null);
   const [error, setError] = useState("");
@@ -85,10 +107,25 @@ export default function TaskSelector() {
   // Whether the tick loop should keep running
   const isSpinningRef = useRef(false);
 
-  // Save tasks to localStorage whenever they change
+  // Persist tasks to localStorage
   useEffect(() => {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
   }, [tasks]);
+
+  // Persist completed tasks
+  useEffect(() => {
+    localStorage.setItem(COMPLETED_STORAGE_KEY, JSON.stringify(completedTasks));
+  }, [completedTasks]);
+
+  // Persist credits
+  useEffect(() => {
+    localStorage.setItem(CREDITS_STORAGE_KEY, JSON.stringify(skipCredits));
+  }, [skipCredits]);
+
+  // Persist streak
+  useEffect(() => {
+    localStorage.setItem(STREAK_STORAGE_KEY, JSON.stringify(streak));
+  }, [streak]);
 
   /** Ensure AudioContext is created (must be after a user gesture) */
   const ensureAudioCtx = useCallback(() => {
@@ -157,6 +194,48 @@ export default function TaskSelector() {
     setTasks((prev) => prev.filter((_, i) => i !== index));
     setWinner(null);
   };
+
+  /**
+   * Mark the current winner as completed:
+   * - Remove from tasks list
+   * - Add to completedTasks list
+   * - Increment streak; award credits based on milestones
+   */
+  const completeTask = useCallback(() => {
+    if (!winner) return;
+
+    const completedTask = winner;
+    const newTotalCompleted = completedTasks.length + 1;
+    const newStreak = streak + 1;
+
+    // Calculate credit awards
+    let creditsToAdd = 0;
+    // Every TASKS_PER_CREDIT completions → +1 credit
+    if (newTotalCompleted % TASKS_PER_CREDIT === 0) {
+      creditsToAdd += 1;
+    }
+    // Streak bonus: exactly STREAK_BONUS_THRESHOLD in a row → +1 bonus credit
+    if (newStreak === STREAK_BONUS_THRESHOLD) {
+      creditsToAdd += 1;
+    }
+
+    // Remove from active tasks
+    setTasks((prev) => prev.filter((t) => t !== completedTask));
+    // Add to completed list (newest first)
+    setCompletedTasks((prev) => [completedTask, ...prev]);
+    // Update streak
+    setStreak(newStreak);
+    // Award credits
+    if (creditsToAdd > 0) {
+      setSkipCredits((c) => c + creditsToAdd);
+    }
+    // Clear winner display
+    setWinner(null);
+    // Reset reel
+    setTranslateY(0);
+    setTransition("none");
+    setReelKey((k) => k + 1);
+  }, [winner, completedTasks.length, streak]);
 
   const spin = useCallback(() => {
     if (tasks.length < 2) {
@@ -230,6 +309,14 @@ export default function TaskSelector() {
     };
   }, []);
 
+  const handleSkip = useCallback(() => {
+    if (skipCredits <= 0) return;
+    setSkipCredits((c) => c - 1);
+    setStreak(0);
+    // spin() already clears winner and resets the reel internally
+    spin();
+  }, [skipCredits, spin]);
+
   // Build the reel: (SPIN_CYCLES + EXTRA_CYCLES + 1) * tasks.length slots
   // +1 for the initial "slot 0" that's visible before spinning
   const totalSlots = tasks.length > 0
@@ -241,15 +328,77 @@ export default function TaskSelector() {
 
   const hasStarted = tasks.length > 0 && (isSpinning || winner !== null);
 
+  // Calculate total completed for credit milestone display
+  const totalCompleted = completedTasks.length;
+  const nextCreditAt = TASKS_PER_CREDIT - (totalCompleted % TASKS_PER_CREDIT);
+  const progressToCredit = totalCompleted % TASKS_PER_CREDIT;
+
   return (
     <div className="min-h-screen bg-neutral-950 flex flex-col items-center py-10 px-4">
       {/* Title */}
       <h1 className="text-5xl font-black text-yellow-400 mb-2 tracking-widest uppercase drop-shadow-[0_0_20px_rgba(250,204,21,0.6)]">
         Task Roulette
       </h1>
-      <p className="text-yellow-600 text-sm mb-10 tracking-widest uppercase">
+      <p className="text-yellow-600 text-sm mb-4 tracking-widest uppercase">
         Spin to decide your fate
       </p>
+
+      {/* Credits & Streak HUD */}
+      <div className="flex items-center gap-6 mb-8">
+        {/* Skip Credits */}
+        <div className="flex flex-col items-center">
+          <div className="flex items-center gap-1.5">
+            {Array.from({ length: Math.max(skipCredits, 3) }, (_, i) => (
+              <div
+                key={i}
+                className={`w-5 h-5 rounded-full border-2 transition-all duration-300 ${
+                  i < skipCredits
+                    ? "bg-yellow-400 border-yellow-300 shadow-[0_0_8px_rgba(250,204,21,0.8)]"
+                    : "bg-neutral-800 border-neutral-700"
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-yellow-700 text-xs mt-1 tracking-wider uppercase">
+            {skipCredits} Skip {skipCredits === 1 ? "Credit" : "Credits"}
+          </span>
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-8 bg-yellow-900/50" />
+
+        {/* Streak */}
+        <div className="flex flex-col items-center">
+          <span className="text-yellow-400 font-black text-xl leading-none">
+            {streak}
+          </span>
+          <span className="text-yellow-700 text-xs mt-0.5 tracking-wider uppercase">
+            Streak
+          </span>
+        </div>
+
+        {/* Divider */}
+        <div className="w-px h-8 bg-yellow-900/50" />
+
+        {/* Progress to next credit */}
+        <div className="flex flex-col items-center">
+          <div className="flex gap-0.5">
+            {Array.from({ length: TASKS_PER_CREDIT }, (_, i) => (
+              <div
+                key={i}
+                className={`w-3 h-3 rounded-sm transition-all duration-300 ${
+                  i < progressToCredit
+                    ? "bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.6)]"
+                    : "bg-neutral-800 border border-neutral-700"
+                }`}
+              />
+            ))}
+          </div>
+          <span className="text-yellow-700 text-xs mt-1 tracking-wider uppercase">
+            {nextCreditAt} to next credit
+          </span>
+        </div>
+      </div>
 
       {/* Slot machine reel viewport */}
       <div
@@ -359,12 +508,33 @@ export default function TaskSelector() {
         </div>
       </div>
 
-      {/* Winner announcement */}
+      {/* Winner announcement + Complete / Skip actions */}
       {winner && !isSpinning && (
-        <div className="mb-6 text-center">
+        <div className="mb-6 text-center flex flex-col items-center gap-3">
           <p className="text-yellow-300 text-lg font-bold tracking-widest uppercase animate-bounce">
             🎰 Your task is chosen! 🎰
           </p>
+          <div className="flex items-center gap-3">
+            {/* Complete task button */}
+            <button
+              onClick={completeTask}
+              className="flex items-center gap-2 px-6 py-3 bg-green-600 hover:bg-green-500 text-white font-black text-sm uppercase tracking-widest rounded-full shadow-[0_0_20px_rgba(34,197,94,0.4)] hover:shadow-[0_0_35px_rgba(34,197,94,0.7)] transition-all duration-200 active:scale-95"
+            >
+              <span className="text-lg">✅</span>
+              Task Complete!
+            </button>
+
+            {/* Skip button — only shown when credits available */}
+            {skipCredits > 0 && (
+              <button
+                onClick={handleSkip}
+                className="flex items-center gap-2 px-6 py-3 bg-neutral-800 hover:bg-neutral-700 border border-yellow-700 hover:border-yellow-500 text-yellow-400 font-black text-sm uppercase tracking-widest rounded-full transition-all duration-200 active:scale-95"
+              >
+                <span className="text-base">🎲</span>
+                Skip ({skipCredits})
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -455,6 +625,14 @@ export default function TaskSelector() {
         )}
       </div>
 
+      {/* Completed Tasks Button */}
+      <button
+        onClick={() => setShowCompleted(true)}
+        className="text-green-700 hover:text-green-500 text-sm underline underline-offset-4 transition-colors mb-2"
+      >
+        ✅ Completed Tasks ({completedTasks.length})
+      </button>
+
       {/* Manage Tasks Button */}
       <button
         onClick={() => setShowManage(true)}
@@ -462,6 +640,82 @@ export default function TaskSelector() {
       >
         Manage / Remove Tasks
       </button>
+
+      {/* Completed Tasks Modal */}
+      {showCompleted && (
+        <div className="fixed inset-0 bg-black/80 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-neutral-900 border border-green-700 rounded-2xl w-full max-w-md shadow-[0_0_60px_rgba(34,197,94,0.2)]">
+            {/* Modal header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-green-900">
+              <h2 className="text-green-400 font-black text-lg uppercase tracking-widest">
+                ✅ Completed Tasks
+              </h2>
+              <button
+                onClick={() => setShowCompleted(false)}
+                className="text-green-700 hover:text-green-400 text-2xl leading-none transition-colors"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* Stats bar */}
+            <div className="px-6 py-3 border-b border-green-900/50 flex items-center gap-4 text-xs text-green-700 uppercase tracking-wider">
+              <span>{completedTasks.length} completed</span>
+              <span>·</span>
+              <span>{skipCredits} skip credits</span>
+              <span>·</span>
+              <span>{streak} streak</span>
+            </div>
+
+            {/* Modal body */}
+            <div className="px-6 py-4 max-h-96 overflow-y-auto">
+              {completedTasks.length === 0 ? (
+                <p className="text-neutral-600 text-sm text-center py-8">
+                  No completed tasks yet. Complete a task to see it here!
+                </p>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {completedTasks.map((task, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-3 bg-neutral-800 border border-green-900/50 rounded-xl px-4 py-3"
+                    >
+                      <span className="text-green-500 text-base flex-shrink-0">✅</span>
+                      <span className="text-green-300 text-sm font-medium flex-1">
+                        {task}
+                      </span>
+                      <span className="text-neutral-600 text-xs font-mono">
+                        #{completedTasks.length - i}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Modal footer */}
+            <div className="px-6 py-4 border-t border-green-900 flex justify-between items-center">
+              {completedTasks.length > 0 && (
+                <button
+                  onClick={() => {
+                    setCompletedTasks([]);
+                    setStreak(0);
+                  }}
+                  className="text-red-600 hover:text-red-400 text-xs uppercase tracking-wider font-bold transition-colors"
+                >
+                  Clear History
+                </button>
+              )}
+              <button
+                onClick={() => setShowCompleted(false)}
+                className="ml-auto px-6 py-2 bg-green-700 hover:bg-green-600 text-white font-black rounded-xl text-sm uppercase tracking-wider transition-colors"
+              >
+                Done
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Manage Modal */}
       {showManage && (
