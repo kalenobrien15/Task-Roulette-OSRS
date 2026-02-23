@@ -352,7 +352,7 @@ export default function TaskSelector() {
   const progressToCredit = totalCompleted % TASKS_PER_CREDIT;
 
   return (
-    <div className="min-h-screen bg-neutral-950 flex flex-col items-center py-10 px-4">
+    <div className="min-h-screen flex flex-col items-center py-10 px-4">
       {/* Title */}
       <h1 className="text-5xl font-black text-yellow-400 mb-2 tracking-widest uppercase drop-shadow-[0_0_20px_rgba(250,204,21,0.6)]">
         Task Roulette
