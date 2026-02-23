@@ -1,8 +1,18 @@
 @import "tailwindcss";
 
+/* Old School RuneScape font - similar to the in-game font */
+@font-face {
+  font-family: 'OSRS';
+  src: url('https://fonts.cdnfonts.com/s/14913/Runescape%20UF.woff') format('woff');
+  font-weight: normal;
+  font-style: normal;
+}
+
 body {
-  background-image: url("https://www.runescape.com/img/rsp777/bg2.jpg");
+  background-image: url("/Task-Roulette-OSRS/bg.jpg");
   background-repeat: repeat-y;
   background-size: 100% auto;
   background-attachment: scroll;
+  background-color: #000;
+  font-family: 'OSRS', 'Courier New', monospace;
 }

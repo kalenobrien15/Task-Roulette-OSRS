@@ -505,7 +505,7 @@ export default function TaskSelector() {
                     display: "flex",
                     alignItems: "center",
                     justifyContent: "center",
-                    fontFamily: "'RuneScape Quill 8', 'Courier New', monospace",
+                    fontFamily: "'OSRS', 'Runescape UF', 'Courier New', monospace",
                     fontSize: 22,
                     color: "#000",
                     paddingLeft: 24,
